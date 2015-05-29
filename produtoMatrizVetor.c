@@ -17,6 +17,7 @@ typedef int bool;
 #define false 0
 
 #define SEED 1
+//#define DEBUG 1
 
 int** InitMatriz(int n, bool cheia);
 int** InitMatrizCheia(int tamanhoMatriz);
@@ -25,10 +26,32 @@ int** InitMatrizVazia(int tamanhoMatriz);
 void PrintMatriz(int* matriz,int tamanhoMatriz);
 void PrintVetor(int* vetor, int tamanhoVetor);
 
+int* ProdutoSequencial(int* A, int* X, int tamanho){
+    int* Y;
+    Y=malloc(tamanho*sizeof(int));
+    int i,j;
+    for(i=0;i<tamanho;i++){
+        Y[i]=0;
+        for(j=0;j<tamanho;j++){
+            Y[i]+=A[j+i*tamanho]*X[j];
+        }
+    }
+    return Y;
+}
+
+bool ComparaVetores(int* A, int* B, int tamanho){
+    int i;
+    for(i=0;i<tamanho;i++){
+        if(A[i]!=B[i]) return false;
+    }
+    return true;
+}
+
 int main(int argc, char *argv[]) {
-   int rank, nprocs, i, j, ret, local_flag=0, total_flag=0;
+   int rank, nprocs, i, j, ret, local_flag=0, total_flag=0,DEBUG;
    int *a=NULL, *local_a=NULL, *b=NULL, size, local_n;
-   int *A,*X,*Y;
+   int *A,*X,*Y,*R;
+   double startTime,endTime, elapsedTime;
 
    if(SEED) srand(SEED);
    else srand(time(NULL));
@@ -42,12 +65,14 @@ int main(int argc, char *argv[]) {
    } else return 0;
 
    //recebe o numero de elementos do vetor
-   if(argc<2) {
+   if(argc<3) {
       if(rank==0) printf("Digite: %s <numero de elementos do vetor>\n", argv[0]);
       MPI_Finalize();
       return 0;
    }
    size = atoi(argv[1]);
+   DEBUG = atoi(argv[2]);
+
     X = malloc( size*sizeof( int ));
    //aloca espaco para o vetor de entrada e de saida
    if (rank == 0) {
@@ -61,10 +86,12 @@ int main(int argc, char *argv[]) {
        for(i=0;i<size;i++) X[i]=rand() % 10;
    }
     if(rank==0){
-        printf("A:\n");
-        PrintMatriz(A,size);
-        printf("X:\n");
-        PrintVetor(X,size);
+        if(DEBUG){
+            printf("A:\n");
+            PrintMatriz(A,size);
+            printf("X:\n");
+            PrintVetor(X,size);
+        }
     }
    //aloca espaco para o bloco do vetor em cada processo
    local_n = size/nprocs*size;
@@ -79,35 +106,35 @@ int main(int argc, char *argv[]) {
       MPI_Finalize(); //encerra todos os processos
       return 0;
    }
-
+    if(rank==0&&!DEBUG) GET_TIME(startTime);
    //divide o vetor em blocos eentrega um bloco por processo
    MPI_Scatter(A, local_n, MPI_INT, local_a, local_n, MPI_INT, 0, MPI_COMM_WORLD);
    int minhasLinhas = size/nprocs;
    int* acumulador = malloc(minhasLinhas*sizeof(int));
    //faz o processamento em cada processo
    int offset;
-   printf("minhasLinhas=%d\n",minhasLinhas);
-   printf("[%d]:for(i =%d;i<%d;i++)\n",rank,0,minhasLinhas);
+   if(DEBUG) printf("minhasLinhas=%d\n",minhasLinhas);
+   if(DEBUG) printf("[%d]:for(i =%d;i<%d;i++)\n",rank,0,minhasLinhas);
    for(i =0;i<minhasLinhas;i++){
        acumulador[i]=0;
        for (j = 0; j < size; j++){
           offset = j+i*size;
-          printf("[%d]:acumulador[%d]+=local_a[%d]*X[%d];\n",rank,i,offset,j);
+          if(DEBUG) printf("[%d]:acumulador[%d]+=local_a[%d]*X[%d];\n",rank,i,offset,j);
           acumulador[i]+=local_a[offset]*X[j];
        }
-       printf("p:[%d] acumulador[%d]==%d\n",rank,i, acumulador[i]);
+       if(DEBUG) printf("p:[%d] acumulador[%d]==%d\n",rank,i, acumulador[i]);
    }
    if(rank==0){
-   printf("%d*%d!=%d\n",minhasLinhas,nprocs,size);
+   if(DEBUG) printf("%d*%d!=%d\n",minhasLinhas,nprocs,size);
     if(minhasLinhas*nprocs!=size){
         for(i=minhasLinhas*nprocs;i<size;i++){
            Y[i]=0;
            for (j = 0; j < size; j++){
               offset = j+i*size;
-              printf("[%d]:Y[%d]+=A[%d]*X[%d];\n",rank,i,offset,j);
+              if(DEBUG) printf("[%d]:Y[%d]+=A[%d]*X[%d];\n",rank,i,offset,j);
               Y[i]+=A[offset]*X[j];
            }
-           printf("p:[%d] Y[%d]==%d\n",rank,i, Y[i]);
+           if(DEBUG) printf("p:[%d] Y[%d]==%d\n",rank,i, Y[i]);
         }
     }
    }
@@ -116,14 +143,28 @@ int main(int argc, char *argv[]) {
    //coleta os blocos processados por cada processo
    MPI_Gather(acumulador, minhasLinhas, MPI_INT, Y, minhasLinhas, MPI_INT, 0, MPI_COMM_WORLD);
 
+    if(rank==0&&!DEBUG) GET_TIME(endTime);
    //imprime o vetor resultante
    if (rank == 0) {
-      PrintVetor(Y,size);
-      //free(A);
-      //free(X);
-   }
+      R=ProdutoSequencial(A,X,size);
+    if(!DEBUG){
+        elapsedTime = endTime-startTime;
+        printf("Time:%.6f\n",elapsedTime);
+    }
+    if(DEBUG){
+        printf("Y:\n");
+        PrintVetor(Y,size);
+        PrintVetor(R,size);
+    }
+      if(ComparaVetores(Y,R,size)) printf("Correto\n");
+      else printf("Errado\n");
 
+      free(A);
+      free(Y);
+   }
+   free(X);
    free(local_a);
+   free (acumulador);
 
    MPI_Finalize();
    return 0;
