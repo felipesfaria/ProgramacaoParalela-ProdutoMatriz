@@ -82,22 +82,42 @@ int main(int argc, char *argv[]) {
 
    //divide o vetor em blocos eentrega um bloco por processo
    MPI_Scatter(A, local_n, MPI_INT, local_a, local_n, MPI_INT, 0, MPI_COMM_WORLD);
-   int acumulador;
-   acumulador=0;
+   int minhasLinhas = size/nprocs;
+   int* acumulador = malloc(minhasLinhas*sizeof(int));
    //faz o processamento em cada processo
-   for (i = 0; i < local_n; i++){
-      acumulador+=local_a[i]*X[i];
+   int offset;
+   printf("minhasLinhas=%d\n",minhasLinhas);
+   printf("[%d]:for(i =%d;i<%d;i++)\n",rank,0,minhasLinhas);
+   for(i =0;i<minhasLinhas;i++){
+       acumulador[i]=0;
+       for (j = 0; j < size; j++){
+          offset = j+i*size;
+          printf("[%d]:acumulador[%d]+=local_a[%d]*X[%d];\n",rank,i,offset,j);
+          acumulador[i]+=local_a[offset]*X[j];
+       }
+       printf("p:[%d] acumulador[%d]==%d\n",rank,i, acumulador[i]);
    }
-   printf("[%d]%d\n",rank, acumulador);
-
+   if(rank==0){
+   printf("%d*%d!=%d\n",minhasLinhas,nprocs,size);
+    if(minhasLinhas*nprocs!=size){
+        for(i=minhasLinhas*nprocs;i<size;i++){
+           Y[i]=0;
+           for (j = 0; j < size; j++){
+              offset = j+i*size;
+              printf("[%d]:Y[%d]+=A[%d]*X[%d];\n",rank,i,offset,j);
+              Y[i]+=A[offset]*X[j];
+           }
+           printf("p:[%d] Y[%d]==%d\n",rank,i, Y[i]);
+        }
+    }
+   }
       //MPI_Finalize(); //encerra todos os processos
       //return 0;
    //coleta os blocos processados por cada processo
-   MPI_Gather(&acumulador, 1, MPI_INT, Y, local_n, MPI_INT, 0, MPI_COMM_WORLD);
+   MPI_Gather(acumulador, minhasLinhas, MPI_INT, Y, minhasLinhas, MPI_INT, 0, MPI_COMM_WORLD);
 
    //imprime o vetor resultante
    if (rank == 0) {
-   printf("%d??\n",Y[2]);
       PrintVetor(Y,size);
       //free(A);
       //free(X);
