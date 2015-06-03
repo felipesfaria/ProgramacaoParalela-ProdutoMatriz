@@ -3,8 +3,8 @@
 /* Mostra como usar as funções de distribuição e coleta de dados distribuídos */
 
 /* Compile:  mpicc -o produtoMatrizVetor produtoMatrizVetor.c */
-/* Run:      mpirun -np <number of processes> ./produtoMatrizVetor */
-/* Exm:      mpirun -np 2 ./produtoMatrizVetor 5 */
+/* Run:      mpirun -np <number of processes> ./produtoMatrizVetor <tamanho do vetor> <debug_flag>*/
+/* Exm:      mpirun -np 2 ./produtoMatrizVetor 5 0*/
 /* --------------------------------------------------------------------------------------------*/
 
 #include "mpi.h"
@@ -51,7 +51,8 @@ int main(int argc, char *argv[]) {
    int rank, nprocs, i, j, ret, local_flag=0, total_flag=0,DEBUG;
    int *a=NULL, *local_a=NULL, *b=NULL, size, local_n;
    int *A,*X,*Y,*R;
-   double startTime,endTime, elapsedTime;
+   double startTimeParallel,endTimeParallel, elapsedTimeParallel;
+   double startTimeSequential,endTimeSequential, elapsedTimeSequential;
 
    if(SEED) srand(SEED);
    else srand(time(NULL));
@@ -66,7 +67,7 @@ int main(int argc, char *argv[]) {
 
    //recebe o numero de elementos do vetor
    if(argc<3) {
-      if(rank==0) printf("Digite: %s <numero de elementos do vetor>\n", argv[0]);
+      if(rank==0) printf("Digite: %s <numero de elementos do vetor> <debug_flag>\n", argv[0]);
       MPI_Finalize();
       return 0;
    }
@@ -106,7 +107,7 @@ int main(int argc, char *argv[]) {
       MPI_Finalize(); //encerra todos os processos
       return 0;
    }
-    if(rank==0&&!DEBUG) GET_TIME(startTime);
+    if(rank==0&&!DEBUG) GET_TIME(startTimeParallel);
    //divide o vetor em blocos eentrega um bloco por processo
    MPI_Scatter(A, local_n, MPI_INT, local_a, local_n, MPI_INT, 0, MPI_COMM_WORLD);
    int minhasLinhas = size/nprocs;
@@ -143,13 +144,18 @@ int main(int argc, char *argv[]) {
    //coleta os blocos processados por cada processo
    MPI_Gather(acumulador, minhasLinhas, MPI_INT, Y, minhasLinhas, MPI_INT, 0, MPI_COMM_WORLD);
 
-    if(rank==0&&!DEBUG) GET_TIME(endTime);
+    if(rank==0&&!DEBUG) GET_TIME(endTimeParallel);
    //imprime o vetor resultante
    if (rank == 0) {
+      GET_TIME(startTimeSequential);
       R=ProdutoSequencial(A,X,size);
+      GET_TIME(endTimeSequential);
+      elapsedTimeSequential = endTimeSequential - startTimeSequential;
     if(!DEBUG){
-        elapsedTime = endTime-startTime;
-        printf("Time:%.6f\n",elapsedTime);
+        elapsedTimeParallel = endTimeParallel-startTimeParallel;
+        printf("Sequential Time:%.6f\n",elapsedTimeSequential);
+        printf("Parallel Time:%.6f\n",elapsedTimeParallel);
+        printf("Speedup:%.6f\n",elapsedTimeSequential/elapsedTimeParallel);
     }
     if(DEBUG){
         printf("Y:\n");
@@ -226,3 +232,4 @@ int** InitMatriz(int n,bool cheia){
     }
     return matriz;
 }
+
